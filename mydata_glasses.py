@@ -73,6 +73,10 @@ def rename2(dir: str):
 
 def extract_feature(detector, predictor, imgpath):
     img = cv2.imread(imgpath)
+    return extract_feature_with_img(detector, predictor, img)
+
+
+def extract_feature_with_img(detector, predictor, img):
     dets = detector(img, 1)
     landmarks = predictor(img, dets[0]).parts()
 
@@ -82,7 +86,6 @@ def extract_feature(detector, predictor, imgpath):
             features.append(landmark.x)
             features.append(landmark.y)
     return features
-
 
 @cmd.command()
 @click.option('--dir', '-d', default='World')
@@ -115,10 +118,12 @@ def cv(dir: str):
 
     count = 0
     for imgpath in glob.glob(dir + "/*.png"):
-        feature = extract_feature(detector, predictor, imgpath)
+        img = cv2.imread(imgpath)
+        feature = extract_feature_with_img(detector, predictor, img)
         print(len(feature))
         print(neigh.predict([feature]))
 
+        output_path = "/home/dl-box/デスクトップ/output"
         if count > 200:
             break
         else:
