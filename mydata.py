@@ -1,10 +1,14 @@
 import os
 import glob
+import pathlib
+import shutil
 
 from PIL import Image
 import click
 import cv2
 import dlib
+from sklearn.neighbors import KNeighborsClassifier
+from tqdm import tqdm
 
 VIRTUAL_FIT_IMAGE_SIZE = (713, 401)
 
@@ -77,6 +81,7 @@ def extract_feature(detector, predictor, imgpath):
 
 
 def extract_feature_with_img(detector, predictor, img):
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     dets = detector(img, 1)
     landmarks = predictor(img, dets[0]).parts()
 
@@ -87,47 +92,78 @@ def extract_feature_with_img(detector, predictor, img):
             features.append(landmark.y)
     return features
 
-@cmd.command()
-@click.option('--dir', '-d', default='World')
-def cv(dir: str):
-    from sklearn.neighbors import KNeighborsClassifier
-    neigh = KNeighborsClassifier(n_neighbors=1)
-    y = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 
+class AngleChecker:
     predictor_path = "./resources/dlib/shape_predictor_68_face_landmarks.dat"
-    if not predictor_path:
-        predictor_path = "./shape_predictor_68_face_landmarks.dat"
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(predictor_path)
 
+    def __init__(self, noglass_images_dir, person):
+        self.neigh = KNeighborsClassifier(n_neighbors=1)
 
-    noglass_images_dir = "/home/dl-box/デスクトップ/ResizedVirtualFitNoGlassImages"
-    a = {}
-    for imgpath in glob.glob(noglass_images_dir + "/Ueda" + "_*.png"):
+        a = {}
+        for imgpath in glob.glob(noglass_images_dir + "/" + person + "_*.png"):
+            print(imgpath)
+            basename = os.path.basename(imgpath)
+            basename_noext, ext = os.path.splitext(basename)
+            people = basename_noext.split('_')[0]
+            angle_no = basename_noext.split('_')[-1]
+            print(angle_no)
+            features = extract_feature(self.detector, self.predictor, imgpath)
+            a[angle_no] = features
+
+        Xtrue = [a["00"], a["01"], a["02"], a["03"], a["04"], a["05"], a["06"], a["07"], a["08"], a["09"], a["10"],
+                 a["11"], a["12"]]
+        y = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        self.neigh.fit(Xtrue, y)
+
+    def predict(self, img):
+        feature = extract_feature_with_img(self.detector, self.predictor, img)
+        return self.neigh.predict([feature])[0]
+
+
+@cmd.command()
+@click.option('--person', '-p', default='World')
+def cv(person: str):
+
+    if 'World' in [person]:
+        print("Please specify options")
+        return
+
+    # メガネありオリジナル画像フォルダ
+    org_images_dir = "/Users/uejun/data/VirtualFitGlasses/GlassOrgImages" + "/" + person
+
+    # メガネなしの画像フォルダ
+    noglass_images_dir = "/Users/uejun/data/VirtualFitGlasses/NoGlassResizedImages"
+
+    # Checkerの準備
+    checker = AngleChecker(noglass_images_dir, person)
+
+    # Outputディレクトリ
+    output_dir = "/Users/uejun/data/VirtualFitGlasses/GlassImages" + "/" + person
+    pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+
+    # オリジナルの画像パスリスト
+    image_pathes = glob.glob(org_images_dir + "/*.png")
+    count = 0
+    for imgpath in tqdm(image_pathes):
         basename = os.path.basename(imgpath)
         basename_noext, ext = os.path.splitext(basename)
-        people = basename_noext.split('_')[0]
-        angle_no = basename_noext.split('_')[-1]
+        parts = basename_noext.split('_')
+        angle_no = parts[2]
 
-        features = extract_feature(detector, predictor, imgpath)
-        a[angle_no] = features
-
-    Xtrue = [a["00"], a["01"], a["02"], a["03"], a["04"], a["05"], a["06"], a["07"], a["08"], a["09"], a["10"], a["11"], a["12"]]
-    print(len(Xtrue))
-    neigh.fit(Xtrue, y)
-
-    count = 0
-    for imgpath in glob.glob(dir + "/*.png"):
         img = cv2.imread(imgpath)
-        feature = extract_feature_with_img(detector, predictor, img)
-        print(len(feature))
-        print(neigh.predict([feature]))
+        try:
+            no = checker.predict(img)
+            num_str = "{0:02d}".format(no)
 
-        output_path = "/home/dl-box/デスクトップ/output"
-        if count > 200:
-            break
-        else:
-            count += 1
+            new_basename = num_str + "_" + parts[0] + "_" + parts[1] + ext
+            new_imgpath = output_dir + "/" + new_basename
+            shutil.move(imgpath, new_imgpath)
+        except:
+            print("Exce")
+            pass
 
 def main():
     cmd()

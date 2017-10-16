@@ -2,6 +2,11 @@
 
 Python 3.5 required.
 
+## dlibの準備
+resources/dlibフォルダを作ってshape_predictor_68_face_landmarks.datを置く.
+これは重いのでGit管理しない.
+参照: http://dlib.net/face_landmark_detection.py.参照: 
+
 # pix2pix-tensorflow
 
 Based on [pix2pix](https://phillipi.github.io/pix2pix/) by Isola et al.
